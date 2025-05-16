@@ -6,11 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "deploy": "wrangler pages deploy .next --project-name=niklas-vibin"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "lint": "next lint"
   },
   "dependencies": {
     "@cloudflare/next-on-pages": "^1.13.12",
