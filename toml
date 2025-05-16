@@ -1,4 +1,0 @@
-name = "boardgame-clock"
-compatibility_date = "2024-05-01"
-pages_build_output_dir = ".next"
-node_compat = true

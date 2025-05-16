@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "wrangler pages deploy .next --project-name=boardgame-clock"
+    "deploy": "wrangler pages deploy .next --project-name=niklas-vibin"
   },
   "engines": {
     "node": "24.x"
