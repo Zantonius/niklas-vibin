@@ -1,7 +1,9 @@
-import Ably from 'ably';
-import { NextRequest, NextResponse } from 'next/server';
+"use server";
 
-export async function GET(req: NextRequest) {
+import Ably from 'ably';
+import { NextResponse } from 'next/server';
+
+export const GET = async () => {
   const client = new Ably.Rest(process.env.ABLY_API_KEY!);
 
   const tokenRequest = await client.auth.createTokenRequest({
@@ -9,4 +11,4 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json(tokenRequest);
-}
+};
