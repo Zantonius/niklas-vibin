@@ -10,7 +10,7 @@
     "deploy": "wrangler pages deploy .next --project-name=niklas-vibin"
   },
   "engines": {
-    "node": "24.x"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@cloudflare/next-on-pages": "^1.13.12",
