@@ -1,6 +1,5 @@
-"use client";
 import { CreateClock } from '@/BoardgameClock/CreateClock';
 
-export default function CreateRoom() {
+export default async function CreateRoom() {
   return <CreateClock />;
 }
