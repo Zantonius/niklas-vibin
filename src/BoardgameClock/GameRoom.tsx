@@ -24,6 +24,8 @@ type ClockMessage =
         numPlayers: number;
         minutes: number;
         playerNames: string[];
+        timers: number[]; // <-- add timers here
+        readyStates: boolean[];
       };
     }
   | {
@@ -62,7 +64,24 @@ export function GameRoom() {
   const ablyRef = useRef<Realtime | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const hasReceivedConfigRef = useRef(false);
   const isOwner = playersParam !== null && minutesParam !== null;
+
+  const timersRef = useRef(timers);
+  const playerNamesRef = useRef(playerNames);
+  const readyStatesRef = useRef(readyStates);
+
+  useEffect(() => {
+    timersRef.current = timers;
+  }, [timers]);
+
+  useEffect(() => {
+    playerNamesRef.current = playerNames;
+  }, [playerNames]);
+
+  useEffect(() => {
+    readyStatesRef.current = readyStates;
+  }, [readyStates]);
 
   const startClock = (index: number) => {
     if (timerRef.current) return; // Don't start again if already ticking
@@ -100,6 +119,7 @@ export function GameRoom() {
   };
 
   useEffect(() => {
+    hasReceivedConfigRef.current = false;
     const ably = createAblyClient();
     ablyRef.current = ably;
 
@@ -148,34 +168,44 @@ export function GameRoom() {
 
         case "request_config":
           if (isOwner) {
+            console.log("[OWNER] Received request_config, sending full state");
             channel.publish("message", {
               type: "config",
               payload: {
                 numPlayers,
                 minutes,
-                playerNames,
+                playerNames: playerNamesRef.current,
+                timers: timersRef.current,
+                readyStates: readyStatesRef.current,
               },
             });
           }
           break;
 
         case "config":
-          if (!isOwner && data.payload) {
+          if (!isOwner && data.payload && !hasReceivedConfigRef.current) {
             const {
               numPlayers: np,
               minutes: m,
               playerNames: names,
+              timers: ts,
+              readyStates: rs,
             } = data.payload;
+
+            console.log("[JOINER] Received config:", data.payload);
+
             setNumPlayers(np);
             setMinutes(m);
-            setTimers(Array(np).fill(m * 60));
-            setReadyStates(Array(np).fill(false));
             setPlayerNames(
               names ??
                 Array(np)
                   .fill("")
                   .map((_, i) => `Player ${i + 1}`)
             );
+            setTimers(ts ?? Array(np).fill(m * 60));
+            setReadyStates(rs ?? Array(np).fill(false));
+
+            hasReceivedConfigRef.current = true;
           }
           break;
 
@@ -189,8 +219,12 @@ export function GameRoom() {
 
     channel.subscribe("message", onMessage);
 
+    // Request config only after subscription established
     if (!isOwner) {
-      channel.publish("message", { type: "request_config" });
+      setTimeout(() => {
+        console.log("[JOINER] Sending request_config");
+        channel.publish("message", { type: "request_config" });
+      }, 300);
     }
 
     return () => {
@@ -227,7 +261,9 @@ export function GameRoom() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Room: {id}</h1>
+      <h1 className="text-2xl font-bold">
+        Room URL: https://niklas-vibin.vercel.app/boardgame-clock/room/{id}
+      </h1>
       <div className="grid grid-cols-2 gap-4">
         {playerNames.map((name, i) => {
           const isReady = readyStates[i];
