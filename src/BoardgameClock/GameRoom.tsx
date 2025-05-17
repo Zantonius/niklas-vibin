@@ -257,25 +257,26 @@ export function GameRoom() {
           );
         })}
       </div>
-
-      <button
-        onClick={() => {
-          stopClock();
-          const resetTimers = Array(numPlayers).fill(minutes * 60);
-          setTimers(resetTimers);
-          setReadyStates(Array(numPlayers).fill(false));
-          channelRef.current?.publish("message", {
-            type: "reset",
-            payload: {
-              timers: resetTimers,
-              readyStates: Array(numPlayers).fill(false),
-            },
-          });
-        }}
-        className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-      >
-        Restart Timer
-      </button>
+      {isOwner && (
+        <button
+          onClick={() => {
+            stopClock();
+            const resetTimers = Array(numPlayers).fill(minutes * 60);
+            setTimers(resetTimers);
+            setReadyStates(Array(numPlayers).fill(false));
+            channelRef.current?.publish("message", {
+              type: "reset",
+              payload: {
+                timers: resetTimers,
+                readyStates: Array(numPlayers).fill(false),
+              },
+            });
+          }}
+          className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+        >
+          Restart Timer
+        </button>
+      )}
     </div>
   );
 }
