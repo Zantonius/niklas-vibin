@@ -6,28 +6,46 @@ import { useEffect, useRef, useState } from 'react';
 
 import { createAblyClient } from '@/utils/ably';
 
-interface ClockMessage {
-  type: "ready" | "update" | "reset";
-  payload?: {
-    timers?: number[];
-    readyStates?: boolean[];
-    activeIndex?: number | null;
-  };
-}
+type ClockMessage =
+  | {
+      type: "ready" | "update" | "reset";
+      payload?: {
+        timers?: number[];
+        readyStates?: boolean[];
+        activeIndex?: number | null;
+      };
+    }
+  | {
+      type: "request_config";
+    }
+  | {
+      type: "config";
+      payload: {
+        numPlayers: number;
+        minutes: number;
+        playerNames: string[];
+      };
+    }
+  | {
+      type: "name_update";
+      payload: {
+        playerNames: string[];
+      };
+    };
 
 export function GameRoom() {
-  const { roomId } = useParams();
+  const { id } = useParams();
   const searchParams = useSearchParams();
   const playersParam = searchParams.get("players");
   const minutesParam = searchParams.get("minutes");
 
-  const numPlayers = playersParam
-    ? Math.min(Math.max(Number(playersParam), 2), 10)
-    : 2;
-  const minutes = minutesParam
-    ? Math.min(Math.max(Number(minutesParam), 1), 60)
-    : 5;
-  const INITIAL_TIME = minutes * 60; // seconds
+  const [numPlayers, setNumPlayers] = useState(() =>
+    playersParam ? Math.min(Math.max(Number(playersParam), 2), 10) : 2
+  );
+  const [minutes, setMinutes] = useState(() =>
+    minutesParam ? Math.min(Math.max(Number(minutesParam), 1), 60) : 5
+  );
+  const INITIAL_TIME = minutes * 60;
 
   const [playerNames, setPlayerNames] = useState(() =>
     Array(numPlayers)
@@ -40,12 +58,14 @@ export function GameRoom() {
   const [timers, setTimers] = useState(() =>
     Array(numPlayers).fill(INITIAL_TIME)
   );
+
   const ablyRef = useRef<Realtime | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const isOwner = playersParam !== null && minutesParam !== null;
 
   const startClock = (index: number) => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (timerRef.current) return; // Don't start again if already ticking
 
     timerRef.current = setInterval(() => {
       setTimers((prev) => {
@@ -73,34 +93,33 @@ export function GameRoom() {
     const updated = [...playerNames];
     updated[index] = newName;
     setPlayerNames(updated);
+    channelRef.current?.publish("message", {
+      type: "name_update",
+      payload: { playerNames: updated },
+    });
   };
 
   useEffect(() => {
     const ably = createAblyClient();
     ablyRef.current = ably;
 
-    const channel = ably.channels.get(`room-${roomId}`);
+    const channel = ably.channels.get(`room-${id}`);
     channelRef.current = channel;
 
     const onMessage = (msg: Message) => {
       const data = msg.data as ClockMessage;
 
       switch (data.type) {
-        case "ready":
-          if (Array.isArray(data.payload?.readyStates)) {
-            const newReady = data.payload.readyStates;
+        case "ready": {
+          const newReady = data.payload?.readyStates;
+          if (Array.isArray(newReady)) {
             setReadyStates(newReady);
-
             const notReadyIndices = newReady
               .map((r, i) => (r ? null : i))
               .filter((i) => i !== null) as number[];
-
-            if (notReadyIndices.length === 1) {
-              // One unready player – start their countdown
-              const target = notReadyIndices[0];
-              startClock(target);
+            if (isOwner && notReadyIndices.length === 1) {
+              startClock(notReadyIndices[0]);
             } else if (notReadyIndices.length === 0) {
-              // All ready – stop timers and reset
               stopClock();
               setReadyStates(Array(numPlayers).fill(false));
               channelRef.current?.publish("message", {
@@ -114,6 +133,7 @@ export function GameRoom() {
             }
           }
           break;
+        }
 
         case "update":
           if (Array.isArray(data.payload?.timers)) {
@@ -125,18 +145,60 @@ export function GameRoom() {
           stopClock();
           setReadyStates(Array(numPlayers).fill(false));
           break;
+
+        case "request_config":
+          if (isOwner) {
+            channel.publish("message", {
+              type: "config",
+              payload: {
+                numPlayers,
+                minutes,
+                playerNames,
+              },
+            });
+          }
+          break;
+
+        case "config":
+          if (!isOwner && data.payload) {
+            const {
+              numPlayers: np,
+              minutes: m,
+              playerNames: names,
+            } = data.payload;
+            setNumPlayers(np);
+            setMinutes(m);
+            setTimers(Array(np).fill(m * 60));
+            setReadyStates(Array(np).fill(false));
+            setPlayerNames(
+              names ??
+                Array(np)
+                  .fill("")
+                  .map((_, i) => `Player ${i + 1}`)
+            );
+          }
+          break;
+
+        case "name_update":
+          if (Array.isArray(data.payload?.playerNames)) {
+            setPlayerNames(data.payload.playerNames);
+          }
+          break;
       }
     };
 
     channel.subscribe("message", onMessage);
 
+    if (!isOwner) {
+      channel.publish("message", { type: "request_config" });
+    }
+
     return () => {
       channel.unsubscribe("message", onMessage);
 
       if (timerRef.current) clearInterval(timerRef.current);
-      const connectionState = ably.connection.state;
-      if (connectionState === "connected") {
-        console.log("connectionState :>> ", connectionState);
+
+      if (ably.connection.state === "connected") {
         try {
           ably.close();
         } catch (err) {
@@ -144,7 +206,7 @@ export function GameRoom() {
         }
       }
     };
-  }, [roomId]);
+  }, [id]);
 
   const toggleReady = (index: number) => {
     const updated = [...readyStates];
@@ -165,7 +227,7 @@ export function GameRoom() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Room: {roomId}</h1>
+      <h1 className="text-2xl font-bold">Room: {id}</h1>
       <div className="grid grid-cols-2 gap-4">
         {playerNames.map((name, i) => {
           const isReady = readyStates[i];
@@ -187,7 +249,6 @@ export function GameRoom() {
                 />
 
                 <div className="text-2xl mt-2">{formatTime(timers[i])}</div>
-
                 <div className="mt-1 text-sm opacity-80">
                   {isReady ? "Ready" : "Not Ready"}
                 </div>
@@ -196,15 +257,17 @@ export function GameRoom() {
           );
         })}
       </div>
+
       <button
         onClick={() => {
           stopClock();
-          setTimers(Array(numPlayers).fill(INITIAL_TIME));
+          const resetTimers = Array(numPlayers).fill(minutes * 60);
+          setTimers(resetTimers);
           setReadyStates(Array(numPlayers).fill(false));
           channelRef.current?.publish("message", {
             type: "reset",
             payload: {
-              timers: Array(numPlayers).fill(INITIAL_TIME),
+              timers: resetTimers,
               readyStates: Array(numPlayers).fill(false),
             },
           });
