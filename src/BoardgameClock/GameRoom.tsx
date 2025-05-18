@@ -1,7 +1,7 @@
 "use client";
 
 import { Message, Realtime, RealtimeChannel } from 'ably';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { createAblyClient } from '@/utils/ably';
@@ -40,6 +40,7 @@ export function GameRoom() {
   const searchParams = useSearchParams();
   const playersParam = searchParams.get("players");
   const minutesParam = searchParams.get("minutes");
+  const router = useRouter();
 
   const [numPlayers, setNumPlayers] = useState(() =>
     playersParam ? Math.min(Math.max(Number(playersParam), 2), 10) : 2
@@ -281,7 +282,7 @@ export function GameRoom() {
                   onChange={(e) => updateName(i, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   className="bg-transparent text-white text-xl font-bold text-center outline-none border-b border-white placeholder-white max-w-full truncate"
-                  placeholder={`Player ${i + 1}`}
+                  defaultValue={`Player ${i + 1}`}
                 />
 
                 <div className="text-2xl mt-2">{formatTime(timers[i])}</div>
@@ -294,24 +295,40 @@ export function GameRoom() {
         })}
       </div>
       {isOwner && (
-        <button
-          onClick={() => {
-            stopClock();
-            const resetTimers = Array(numPlayers).fill(minutes * 60);
-            setTimers(resetTimers);
-            setReadyStates(Array(numPlayers).fill(false));
-            channelRef.current?.publish("message", {
-              type: "reset",
-              payload: {
-                timers: resetTimers,
-                readyStates: Array(numPlayers).fill(false),
-              },
-            });
-          }}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-        >
-          Restart Timer
-        </button>
+        <div className="flex flex-row items-center gap-2">
+          <button
+            onClick={() => {
+              stopClock();
+              const resetTimers = Array(numPlayers).fill(minutes * 60);
+              setTimers(resetTimers);
+              setReadyStates(Array(numPlayers).fill(false));
+              channelRef.current?.publish("message", {
+                type: "reset",
+                payload: {
+                  timers: resetTimers,
+                  readyStates: Array(numPlayers).fill(false),
+                },
+              });
+            }}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-red-700 cursor-pointer"
+          >
+            Restart Timer
+          </button>
+          <button
+            onClick={() => {
+              if (channelRef.current) {
+                channelRef.current.unsubscribe();
+              }
+              if (ablyRef.current) {
+                ablyRef.current.close();
+              }
+              router.push("/boardgame-clock");
+            }}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-gray-700 cursor-pointer"
+          >
+            Leave Room
+          </button>
+        </div>
       )}
     </div>
   );
